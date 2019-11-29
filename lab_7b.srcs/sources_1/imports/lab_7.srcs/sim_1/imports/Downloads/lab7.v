@@ -114,7 +114,7 @@ module Memory(CS, WE, CLK, ADDR, Mem_Bus);
     for(i = 0; i < 128; i = i + 1) begin
         RAM[i] = 0;
     end
-    $readmemh("../../../../MIPS_Instructions0.txt", RAM);
+    $readmemh("../../../../MIPS_Instructions.txt", RAM);
   end
 
   assign Mem_Bus = ((CS == 1'b0) || (WE == 1'b1)) ? 32'bZ : data_out;
@@ -230,6 +230,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   wire [1:0] format;
   reg [31:0] instr, alu_result;
   reg [6:0] pc, npc;
+  reg overflow, underflow;
   wire [31:0] imm_ext, alu_in_A, alu_in_B, reg_in, readreg1, readreg2;
   reg [31:0] alu_result_save;
   reg alu_or_mem, alu_or_mem_save, regw, writing, reg_or_imm, reg_or_imm_save;
@@ -314,6 +315,22 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
             alu_result[15:8] = alu_in_B[23:16];
             alu_result[23:16] = alu_in_B[15:8];
             alu_result[31:24] = alu_in_B[7:0];
+        end
+        else if (opsave == add8) begin
+            alu_result[7:0] = alu_in_A[7:0] + alu_in_B[7:0];
+            alu_result[15:8] = alu_in_A[15:8] + alu_in_B[15:8];
+            alu_result[23:16] = alu_in_A[23:16] + alu_in_B[23:16];
+            alu_result[31:24] = alu_in_A[31:24] + alu_in_B[31:24];
+        end
+        else if (opsave == sadd) begin
+            {overflow, alu_result} = alu_in_A + alu_in_B;
+            if(overflow) alu_result = 32'b11111111111111111111111111111111;
+            else begin end
+        end
+        else if (opsave == ssub) begin
+            {underflow, alu_result} = alu_in_A - alu_in_B;
+            if(underflow) alu_result = 0;
+            else begin end
         end
         else if (opsave == and1) alu_result = alu_in_A & alu_in_B;
         else if (opsave == or1) alu_result = alu_in_A | alu_in_B;
