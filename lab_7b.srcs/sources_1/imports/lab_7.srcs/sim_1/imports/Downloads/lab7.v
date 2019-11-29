@@ -5,16 +5,16 @@ module MIPS_Testbench ();
 
  parameter N = 10;
  reg[31:0] expected[N:1];
-
+ reg[2:0] val;
  wire[6:0] Address, Address_Mux;
- wire[31:0] Mem_Bus_Wire, REG_1;
+ wire[31:0] Mem_Bus_Wire, REG_1, REG_2, REG_3;
  reg[6:0] AddressTB;
  wire WE_Mux, CS_Mux;
  reg init, RST, WE_TB, CS_TB;
 
  integer i;
 
- MIPS CPU(CLK, RST, CS, WE, Address, Mem_Bus_Wire, REG_1);
+ MIPS CPU(CLK, RST, val, CS, WE, Address, Mem_Bus_Wire, REG_1, REG_2, REG_3);
  Memory MEM(CS_Mux, WE_Mux, CLK, Address_Mux, Mem_Bus_Wire);
 
  assign Address_Mux = (init)? AddressTB : Address;
@@ -27,6 +27,7 @@ module MIPS_Testbench ();
   end
   
   initial begin
+    val = 0;
     expected[1] = 32'h00000006; // $1 content=6 decimal
     expected[2] = 32'h00000012; // $2 content=18 decimal
     expected[3] = 32'h00000018; // $3 content=24 decimal
@@ -72,10 +73,11 @@ endmodule
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-module Complete_MIPS(CLK, RST, A_Out, D_Out, REG_1, REG_2, REG_3);
+module Complete_MIPS(CLK, RST, val, A_Out, D_Out, REG_1, REG_2, REG_3);
   // Will need to be modified to add functionality
   input CLK;
   input RST;
+  input[2:0] val;
   output[6:0] A_Out;
   output[31:0] D_Out, REG_1, REG_2, REG_3;
 
@@ -86,7 +88,7 @@ module Complete_MIPS(CLK, RST, A_Out, D_Out, REG_1, REG_2, REG_3);
   assign A_Out = ADDR;
   assign D_Out = Mem_Bus;
 
-  MIPS CPU(CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
+  MIPS CPU(CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   Memory MEM(CS, WE, CLK, ADDR, Mem_Bus);
 
 endmodule
@@ -135,9 +137,10 @@ endmodule
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-module REG(CLK, RegW, DR, SR1, SR2, Reg_In, ReadReg1, ReadReg2, REG_1, REG_2, REG_3);
+module REG(CLK, RegW, val, DR, SR1, SR2, Reg_In, ReadReg1, ReadReg2, REG_1, REG_2, REG_3);
   input CLK;
   input RegW;
+  input[2:0] val;
   input [4:0] DR;
   input [4:0] SR1;
   input [4:0] SR2;
@@ -166,7 +169,7 @@ module REG(CLK, RegW, DR, SR1, SR2, Reg_In, ReadReg1, ReadReg2, REG_1, REG_2, RE
 
     if(RegW == 1'b1)
       REG[DR] <= Reg_In[31:0];
-
+    REG[1] = val;
     ReadReg1 <= REG[SR1];
     ReadReg2 <= REG[SR2];
   end
@@ -185,8 +188,9 @@ endmodule
 `define f_code instr[5:0]
 `define numshift instr[10:6]
 
-module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
+module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   input CLK, RST;
+  input[2:0] val;
   output reg CS, WE;
   output [6:0] ADDR;
   output[31:0] REG_1, REG_2, REG_3;
@@ -251,7 +255,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
 
   //drive memory bus only during writes
   assign ADDR = (fetchDorI)? pc : alu_result_save[6:0]; //ADDR Mux
-  REG Register(CLK, regw, dr, `sr1, `sr2, reg_in, readreg1, readreg2, REG_1, REG_2, REG_3);
+  REG Register(CLK, regw, val, dr, `sr1, `sr2, reg_in, readreg1, readreg2, REG_1, REG_2, REG_3);
 
   initial begin
     op = and1; opsave = and1;
