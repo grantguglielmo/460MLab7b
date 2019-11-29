@@ -202,6 +202,11 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   parameter srl = 6'b000010;
   parameter sll = 6'b000000;
   parameter jr = 6'b001000;
+  parameter rbit = 6'b101111;
+  parameter rev = 6'b110000;
+  parameter add8 = 6'b101101;
+  parameter sadd = 6'b110001;
+  parameter ssub = 6'b110010;
 
   //non-special instructions, values of opcodes:
   parameter addi = 6'b001000;
@@ -212,6 +217,8 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   parameter beq = 6'b000100;
   parameter bne = 6'b000101;
   parameter j = 6'b000010;
+  parameter jal = 6'b000011;
+  parameter lui = 6'b001111;
 
   //instruction format
   parameter R = 2'd0;
@@ -229,14 +236,16 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
   reg fetchDorI;
   wire [4:0] dr;
   reg [2:0] state, nstate;
+  
+  integer i;
 
   //combinational
   assign imm_ext = (instr[15] == 1)? {16'hFFFF, instr[15:0]} : {16'h0000, instr[15:0]};//Sign extend immediate field
-  assign dr = (format == R)? instr[15:11] : instr[20:16]; //Destination Register MUX (MUX1)
+  assign dr = (format == R)? (`f_code == rbit || `f_code == rev) ? instr[25:21] : instr[15:11] : (format == J) ? 5'b11111 : instr[20:16]; //Destination Register MUX (MUX1)
   assign alu_in_A = readreg1;
   assign alu_in_B = (reg_or_imm_save)? imm_ext : readreg2; //ALU MUX (MUX2)
-  assign reg_in = (alu_or_mem_save)? Mem_Bus : alu_result_save; //Data MUX
-  assign format = (`opcode == 6'd0)? R : ((`opcode == 6'd2)? J : I);
+  assign reg_in = (alu_or_mem_save)? Mem_Bus : alu_result_save;  //Data MUX
+  assign format = (`opcode == 6'd0)? R : ((`opcode == 6'd2 || `opcode == 6'd3)? J : I); //opcode format
   assign Mem_Bus = (writing)? readreg2 : 32'bZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ;
 
   //drive memory bus only during writes
@@ -265,7 +274,11 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       1: begin //decode
         nstate = 3'd2; reg_or_imm = 0; alu_or_mem = 0;
-        if (format == J) begin //jump, and finish
+        if (`opcode == jal) begin   //jump and link
+            npc = instr[6:0];
+            nstate = 3'd2;
+        end
+        else if (format == J) begin //jump, and finish
           npc = instr[6:0];
           nstate = 3'd0;
         end
@@ -277,6 +290,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
             op = add;
             alu_or_mem = 1;
           end
+          else if (`opcode == lui) op = lui;
           else if ((`opcode == lw)||(`opcode == sw)||(`opcode == addi)) op = add;
           else if ((`opcode == beq)||(`opcode == bne)) begin
             op = sub;
@@ -288,7 +302,20 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       2: begin //execute
         nstate = 3'd3;
-        if (opsave == and1) alu_result = alu_in_A & alu_in_B;
+        if (`opcode == jal) alu_result = pc + 7'd1;
+        else if (opsave == lui) alu_result = {imm_ext[15:0], 16'b0000000000000000};
+        else if (opsave == rbit) begin
+            for(i = 0; i < 32; i = i + 1) begin
+                alu_result[i] = alu_in_B[31 - i];
+            end
+        end
+        else if(opsave == rev) begin
+            alu_result[7:0] = alu_in_B[31:24];
+            alu_result[15:8] = alu_in_B[23:16];
+            alu_result[23:16] = alu_in_B[15:8];
+            alu_result[31:24] = alu_in_B[7:0];
+        end
+        else if (opsave == and1) alu_result = alu_in_A & alu_in_B;
         else if (opsave == or1) alu_result = alu_in_A | alu_in_B;
         else if (opsave == add) alu_result = alu_in_A + alu_in_B;
         else if (opsave == sub) alu_result = alu_in_A - alu_in_B;
@@ -308,7 +335,7 @@ module MIPS (CLK, RST, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       3: begin //prepare to write to mem
         nstate = 3'd0;
-        if ((format == R)||(`opcode == addi)||(`opcode == andi)||(`opcode == ori)) regw = 1;
+        if ((format == R)||(`opcode == addi)||(`opcode == andi)||(`opcode == ori)||(`opcode == jal)||(`opcode == lui)) regw = 1;
         else if (`opcode == sw) begin
           CS = 1;
           WE = 1;
