@@ -1,8 +1,8 @@
-module Top(CLK, SW0, SW1, SW2, BtnL, BtnR, A_Out, D_Out, REG_LED, Digit, seg);
+module Top(CLK, SW0, SW1, SW2, BtnL, BtnR, REG_LED, Digit, seg);
   input CLK;
   input SW0, SW1, SW2, BtnL, BtnR;
-  output[6:0] A_Out;
-  output[31:0] D_Out;
+  wire[6:0] A_Out;
+  wire[31:0] D_Out;
   output[7:0] REG_LED;
   output[3:0] Digit;
   output[6:0] seg;
@@ -23,7 +23,7 @@ module Top(CLK, SW0, SW1, SW2, BtnL, BtnR, A_Out, D_Out, REG_LED, Digit, seg);
 endmodule
 
 
-module slowClk(CLK, HALT, slowCLK);
+module slowCLK(CLK, HALT, slowCLK);
     input CLK, HALT;
     output slowCLK;
     reg slowCLK;
