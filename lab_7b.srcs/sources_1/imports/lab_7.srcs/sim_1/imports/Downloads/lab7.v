@@ -3,9 +3,10 @@ module MIPS_Testbench ();
  reg CLK;
  wire CS, WE;
 
- parameter N = 10;
+ parameter N = 1000;
  reg[31:0] expected[N:1];
  reg[2:0] val;
+ wire[2:0] state;
  wire[6:0] Address, Address_Mux;
  wire[31:0] Mem_Bus_Wire, REG_1, REG_2, REG_3;
  reg[6:0] AddressTB;
@@ -14,7 +15,7 @@ module MIPS_Testbench ();
 
  integer i;
 
- MIPS CPU(CLK, RST, val, CS, WE, Address, Mem_Bus_Wire, REG_1, REG_2, REG_3);
+ MIPS CPU(CLK, RST, val, CS, WE, Address, Mem_Bus_Wire, REG_1, REG_2, REG_3, state);
  Memory MEM(CS_Mux, WE_Mux, CLK, Address_Mux, Mem_Bus_Wire);
 
  assign Address_Mux = (init)? AddressTB : Address;
@@ -28,17 +29,8 @@ module MIPS_Testbench ();
   
   initial begin
     val = 0;
-    expected[1] = 32'h00000006; // $1 content=6 decimal
-    expected[2] = 32'h00000012; // $2 content=18 decimal
-    expected[3] = 32'h00000018; // $3 content=24 decimal
-    expected[4] = 32'h0000000C; // $4 content=12 decimal
-    expected[5] = 32'h00000002; // $5 content=2
-    expected[6] = 32'h00000016; // $6 content=22 decimal
-    expected[7] = 32'h00000001; // $7 content=1
-    expected[8] = 32'h00000120; // $8 content=288 decimal
-    expected[9] = 32'h00000003; // $9 content=3
-    expected[10] = 32'h00412022; // $10 content=5th instr 
     CLK = 0;
+    #70 val = 1;
   end
 
   always
@@ -53,13 +45,10 @@ module MIPS_Testbench ();
          RST <= 0;
          $display("Starting Test:");
          for(i = 1; i <= N; i = i+1) begin
-            @(posedge WE); // When a store word is executed
             @(negedge CLK);
-                if (Mem_Bus_Wire != expected[i]) begin
-                    $display("Output mismatch: got %d, expect %d", Mem_Bus_Wire, expected[i]);
-                end else begin 
-                    //$display("Output match: got %d", Mem_Bus_Wire);
-                end
+            if(state == 0) begin
+                $display("ADDR: %d, reg1: %d, reg2: %d, reg3: %d", Address_Mux, REG_1, REG_2, REG_3);
+            end
          end
          $display("Testing Finished:");
          $stop;
@@ -73,7 +62,7 @@ endmodule
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-module Complete_MIPS(CLK, RST, val, A_Out, D_Out, REG_1, REG_2, REG_3);
+module Complete_MIPS(CLK, RST, val, A_Out, D_Out, REG_1, REG_2, REG_3, state);
   // Will need to be modified to add functionality
   input CLK;
   input RST;
@@ -82,13 +71,14 @@ module Complete_MIPS(CLK, RST, val, A_Out, D_Out, REG_1, REG_2, REG_3);
   output[31:0] D_Out, REG_1, REG_2, REG_3;
 
   wire CS, WE;
+  output[2:0] state;
   wire [6:0] ADDR;
   wire [31:0] Mem_Bus;
   
   assign A_Out = ADDR;
   assign D_Out = Mem_Bus;
 
-  MIPS CPU(CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
+  MIPS CPU(CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3, state);
   Memory MEM(CS, WE, CLK, ADDR, Mem_Bus);
 
 endmodule
@@ -116,7 +106,7 @@ module Memory(CS, WE, CLK, ADDR, Mem_Bus);
     for(i = 0; i < 128; i = i + 1) begin
         RAM[i] = 0;
     end
-    $readmemh("../../../../MIPS_Instructions.txt", RAM);
+    $readmemh("C:/Users/grant/Documents/School/EE460M/lab_7b/MIPS_Instructions.txt", RAM);
   end
 
   assign Mem_Bus = ((CS == 1'b0) || (WE == 1'b1)) ? 32'bZ : data_out;
@@ -188,13 +178,14 @@ endmodule
 `define f_code instr[5:0]
 `define numshift instr[10:6]
 
-module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
+module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3, state);
   input CLK, RST;
   input[2:0] val;
   output reg CS, WE;
   output [6:0] ADDR;
   output[31:0] REG_1, REG_2, REG_3;
   inout [31:0] Mem_Bus;
+  output[2:0] state;
 
   //special instructions (opcode == 000000), values of F code (bits 5-0):
   parameter add = 6'b100000;
@@ -279,13 +270,14 @@ module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       1: begin //decode
         nstate = 3'd2; reg_or_imm = 0; alu_or_mem = 0;
-        if (`opcode == jal) begin   //jump and link
-            npc = instr[6:0];
-            nstate = 3'd2;
-        end
-        else if (format == J) begin //jump, and finish
-          npc = instr[6:0];
-          nstate = 3'd0;
+        if (format == J) begin //jump, and finish
+            if (`opcode == jal) begin   //jump and link
+                op = jal;
+            end
+            else begin
+                npc = instr[6:0];
+                nstate = 3'd0;
+            end
         end
         else if (format == R) //register instructions
           op = `f_code;
@@ -307,7 +299,9 @@ module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       2: begin //execute
         nstate = 3'd3;
-        if (`opcode == jal) alu_result = pc + 7'd1;
+        if (opsave == jal) begin 
+            alu_result = pc;
+        end
         else if (opsave == lui) alu_result = {imm_ext[15:0], 16'b0000000000000000};
         else if (opsave == rbit) begin
             for(i = 0; i < 32; i = i + 1) begin
@@ -356,7 +350,11 @@ module MIPS (CLK, RST, val, CS, WE, ADDR, Mem_Bus, REG_1, REG_2, REG_3);
       end
       3: begin //prepare to write to mem
         nstate = 3'd0;
-        if ((format == R)||(`opcode == addi)||(`opcode == andi)||(`opcode == ori)||(`opcode == jal)||(`opcode == lui)) regw = 1;
+        if ((format == R)||(`opcode == addi)||(`opcode == andi)||(`opcode == ori)||(`opcode == lui)) regw = 1;
+        else if (`opcode == jal) begin
+            regw = 1;
+            npc = imm_ext[6:0];
+        end
         else if (`opcode == sw) begin
           CS = 1;
           WE = 1;
